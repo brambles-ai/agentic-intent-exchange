@@ -1,0 +1,1086 @@
+openapi: 3.1.0
+info:
+  title: Agentic Intent Exchange (AIX) API
+  version: "2026-11-01"
+  summary: Carry a shopper's structured shopping brief from a sending agent to a receiving agent as a signed, recipient-bound receipt.
+  description: |
+    Base URL `https://aix.brambles.ai/api/aix`. Every call is made from your server with `Authorization: Bearer <key>`.
+    Keys are scoped: sender keys (`aix_test_pk_…`, `aix_live_pk_…`) hold `supply` and `activity`; receiver keys
+    (`aix_test_rk_…`, `aix_live_rk_…`) hold `subscribe`, `pull`, `claim`, `report` and `activity`. Sandbox keys never reach a
+    real store, never earn and never spend. Self-serve keys are bearer tokens: send them as they are. OAuth client
+    registration is not offered to self-serve agents.
+
+    **Principals.** Receipts, references and activity are keyed on the agent's principal id: in production the bare agent id
+    (for example `aixapp_dcad0746ebb68099bdf7`), in the sandbox `<agent id>:test`. There is no `:live` suffix.
+
+    **Errors.** Bodies are `{"error": "<code>"}` with stable codes; validation errors add `issues`. A missing, revoked or
+    unknown key answers `401 {"error":"unauthorized"}`; a key without the scope an operation needs answers
+    `403 {"error":"insufficient_scope","required":"<scope>"}` (`GET /deliveries/{receipt_id}`, `POST /deliveries/ack` and
+    `GET /receiver/config` answer 401 in both cases). The MCP endpoint answers a missing or unknown key with
+    `401 {"error":"invalid_token"}` and a `WWW-Authenticate` header naming its OAuth protected-resource metadata.
+    Responses are not cacheable (`Cache-Control: no-store`).
+
+    **Rate limits**, per principal and per minute: `POST /intents` 120 (30 for message-only intents, which run an
+    extraction), `POST /handoffs` 120, `POST /handoffs/{handoff_id}/redeem` 120, `POST /privacy/delete` 120,
+    `GET /activity` 60, `GET /deliveries` 60, `POST /deliveries/ack` 120, `POST /test-deliveries` 10, MCP 120;
+    `POST /landing` 30 per IP address. Over the limit the answer is a 429 (`rate_limited`) with `retry_after` in seconds,
+    over MCP and on landings too; only `POST /deliveries/ack` sends no `retry_after`.
+
+    **Caps and windows.** A new sender gets at most 100 paid deliveries a day for its first 30 days; after
+    that the default is 1,000 a day, which Brambles can raise. An AIX link (`handoff_url`) delivers only when a shopper
+    opens it within one hour of the handoff report; a link opened again from a different network address sends the shopper
+    to the store without the receipt; automated opens (crawlers, link previews, prefetch) never deliver and never close the
+    link. One network address gets at most 20 paid deliveries an hour, and at most one paid delivery an hour to the same
+    store, across tasks; clicks past either limit reach the store unbilled (`ip_velocity`). In the sandbox the AIX link
+    shows a test page naming the destination instead of redirecting. Destinations must be `https`.
+
+    **Campaigns (console).** A receiving agent pays only through a campaign it starts in the AIX console: a name, an
+    optional category list, a monthly budget in cents (an integer, at least the campaign's price per intent and at most
+    100,000,000) and an optional quality bar `min_quality` (0-100; the default is 40). A campaign pays only for intents at
+    or above its bar. Charges are metered through Stripe Billing and invoiced in USD when usage reaches $25 and at month end;
+    nobody prepays.
+  contact:
+    name: Brambles
+    email: hello@brambles.ai
+    url: https://www.brambles.ai/agentic-intent-exchange/docs/overview
+servers:
+  - url: https://aix.brambles.ai/api/aix
+security:
+  - bearerKey: []
+tags:
+  - name: Sending
+    description: Sender keys (`supply` scope).
+  - name: Receiving
+    description: Receiver keys (`subscribe`, `pull`, `claim`, `report`).
+  - name: Account
+    description: Either key (`activity` scope).
+paths:
+  /intents:
+    post:
+      tags: [Sending]
+      operationId: submitIntent
+      summary: Submit the shopper's current shopping task for one session.
+      description: |
+        Send either a structured `task` or the shopper's `message` (the exchange then extracts the task; message-only calls have a lower rate limit).
+        Shopping requirements only: no names, contact details or account numbers. Always send `country`; shoppers in the EEA,
+        the UK and Switzerland are shared only with consent. A task that continues the current one keeps its budget unless a new budget or `null` is sent.
+        Every accepted intent carries `quality`: a score from 0 to 100 and the signals behind it. A sandbox intent without a
+        country is accepted with a `warning`; production suppresses it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PublisherIntent" }
+            examples:
+              structured: { $ref: "#/components/examples/IntentRequest" }
+      responses:
+        "202":
+          description: Accepted. The task snapshot is stored until `expires_at`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IntentAccepted" }
+              examples:
+                accepted: { $ref: "#/components/examples/IntentAcceptedExample" }
+        "200":
+          description: Not stored, with the reason.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IntentNotStored" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/InsufficientScope" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: The message extractor is unavailable; send a structured `task` instead.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /handoffs:
+    post:
+      tags: [Sending]
+      operationId: reportHandoff
+      summary: Report that the assistant is sending the shopper to a store.
+      description: |
+        `destination_url` is the store's own page URL (`https`). When a participating store would pay, the status is
+        `delivers_on_click` and the result carries `aix_param` (`aix=<handoff_id>`): keep your own link (affiliate, ad or
+        plain) and add it to the store URL inside it; `landing_url` is the store URL with it added. The intent is
+        delivered when the shopper lands on the store with it (the store claims it), or when they open `handoff_url`, an
+        AIX link that always reaches the store, if you show that instead. Send `consent: "granted"` when the shopper was
+        shown your one-line notice. Shoppers in the EEA, the UK or Switzerland are held with `consent_required` otherwise,
+        and go to the store unshared. Nothing is charged when a handoff is reported: delivery and the charge happen on the
+        shopper's click, landing or the store's redemption, within one hour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HandoffInput" }
+            examples:
+              click: { $ref: "#/components/examples/HandoffRequest" }
+      responses:
+        "200":
+          description: The handoff was recorded (delivered, waiting for the click, held, not delivered, or suppressed). Always includes `handoff_url`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HandoffResult" }
+              examples:
+                deliversOnClick: { $ref: "#/components/examples/HandoffDeliversOnClick" }
+                notDelivered: { $ref: "#/components/examples/HandoffNotDelivered" }
+                suppressed: { $ref: "#/components/examples/HandoffSuppressed" }
+        "409":
+          description: No active intent for this session; the raw destination is returned as `handoff_url`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HandoffNoIntent" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/InsufficientScope" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /handoffs/{handoff_id}/redeem:
+    post:
+      tags: [Receiving]
+      operationId: redeemHandoff
+      summary: Redeem an AIX handoff id that reached your store.
+      description: |
+        From the shopper's landing (`?aix=<handoff_id>`, read by your server; send `{"via": "landing"}` with that
+        request's `client_ip`, `user_agent` and, when sent, `sec_fetch_mode`, so the checks a click runs apply), or from an
+        agent's checkout (UCP `attribution.aix_handoff`, ACP `affiliate_attribution.token`; the default) or a personal
+        agent's conversation (`via: agent`) once it completed an order (`order_id`). Delivers the shopper's request and
+        charges your live campaign as a click would, once. A repeat landing answers the receipt only to the same visitor; a
+        retried checkout or conversation claim within 15 minutes answers the same receipt, free, with `duplicate: true`.
+        A claim without its visitor or order answers `400` (`visitor_required`, `order_required`) and changes nothing. Only the store the handoff was reported for can redeem it, within one hour of the report. A
+        sandbox key gets a free test delivery for any well-formed id, with `test: true`. When the landing request carried
+        `Sec-GPC: 1`, send `gpc: true` or forward that header: nothing is delivered or charged (`privacy_signal`).
+      parameters:
+        - { name: handoff_id, in: path, required: true, schema: { type: string, pattern: "^aixho_[a-f0-9]{32}$" } }
+        - name: Sec-GPC
+          in: header
+          required: false
+          description: The shopper's landing request's Global Privacy Control header, forwarded. `1` declines, as `gpc` does.
+          schema: { type: string, enum: ["1"] }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                via:
+                  type: string
+                  enum: [checkout, landing, agent]
+                  description: "`landing`: your server read `?aix=` on the shopper's landing. `agent`: a personal agent passed the handoff id in its conversation with your agent (Personal Agent Protocol, extension `brambles.ai/aix`). Default `checkout`."
+                gpc:
+                  type: boolean
+                  description: The shopper's landing request carried Global Privacy Control; nothing is delivered or charged.
+                client_ip:
+                  type: string
+                  maxLength: 64
+                  description: "`via: landing`: the landing request's client IP address (required unless `gpc`). Used only for the click checks, as a keyed hash."
+                user_agent:
+                  type: string
+                  maxLength: 1024
+                  description: "`via: landing`: the landing request's User-Agent header (required unless `gpc`)."
+                sec_fetch_mode:
+                  type: string
+                  maxLength: 32
+                  description: "`via: landing`: the landing request's Sec-Fetch-Mode header, when the browser sent one; anything but `navigate` counts as automated."
+                order_id:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: "`via: checkout` or `agent`: your id for the order the checkout or conversation completed (required unless `gpc`). Redeem only at a completed order."
+      responses:
+        "200":
+          description: "Redeemed (`redeemed: true` with `receipt_id`, `context_url` and, for a repeat, `duplicate`; a sandbox key adds `test: true`) or not (`redeemed: false` with a `reason` such as `expired` or `not_redeemable`)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Redemption" }
+              examples:
+                redeemed: { $ref: "#/components/examples/RedemptionExample" }
+        "400": { description: "The claim is missing what its checks need, and nothing changed: `visitor_required` (a landing without `client_ip` and `user_agent`, with `required`) or `order_required` (a checkout or conversation without `order_id`); or `invalid_request`." }
+        "404": { description: "Unknown handoff, or another store's (`{\"redeemed\": false, \"reason\": \"unknown_handoff\"}`)." }
+        "403":
+          description: "`insufficient_scope` with `required: claim` for a sender key; `receiver_app_required` for a key with that scope that is not a self-serve receiving agent's (a legacy credential)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /landing:
+    post:
+      tags: [Receiving]
+      operationId: claimLanding
+      summary: The AIX tag claims the handoff a shopper landed with.
+      description: |
+        Called by `https://aix.brambles.ai/aix-tag.js` from the store page; no key. The browser's Origin must be the store
+        the handoff was reported for (its destination domain or one its receiving agent verified), and the visit passes the
+        same checks as a click. Answers the receipt id; the request itself goes only to the store's server. Limited to 30
+        calls a minute per IP address; over the limit, a 429 with `retry_after` in seconds.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [aix]
+              properties:
+                aix: { type: string, pattern: "^aixho_[a-f0-9]{32}$" }
+      responses:
+        "200":
+          description: "`{ ok: true, receipt_id }`, or `{ ok: false, reason }` (`not_this_store`, `automated`, `not_redeemable`, a click check)."
+        "404": { description: Unknown handoff. }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /privacy/delete:
+    post:
+      tags: [Sending]
+      operationId: deleteSession
+      summary: Honour a shopper's deletion request for one session.
+      description: Deletes the session's stored intents, clears the exchange's copy of receipts delivered from them and clears its handoffs' destination and product details, all at once. Billing records stay; they hold no shopper content. Safe to repeat.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [session_id]
+              properties:
+                session_id: { $ref: "#/components/schemas/SessionId" }
+      responses:
+        "200":
+          description: Deletion confirmed, with what was removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionDeleted" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/InsufficientScope" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /activity:
+    get:
+      tags: [Account]
+      operationId: getActivity
+      summary: Your own activity for the last N days.
+      parameters:
+        - in: query
+          name: days
+          schema: { type: integer, minimum: 1, maximum: 90, default: 30 }
+      responses:
+        "200":
+          description: For a sender key, accepted intent, delivered intent and earnings; for a receiver key, deliveries, acknowledgments and spend. Each key reports its own environment; sandbox never earns or spends.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/PublisherActivity" }
+                  - { $ref: "#/components/schemas/ReceiverActivity" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/InsufficientScope" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /deliveries:
+    get:
+      tags: [Receiving]
+      operationId: listDeliveries
+      summary: Poll your recent deliveries (pull mode).
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { in: query, name: since, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: Recent deliveries addressed to your key, newest first. Use each `receipt_id` with `GET /deliveries/{receipt_id}`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deliveries, delivery_mode]
+                properties:
+                  deliveries: { type: array, items: { $ref: "#/components/schemas/DeliverySummary" } }
+                  delivery_mode: { type: string, const: pull }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/InsufficientScope" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /deliveries/{receipt_id}:
+    get:
+      tags: [Receiving]
+      operationId: getDelivery
+      summary: Verified agent context and recorded events for one receipt.
+      description: Needs the `pull` scope; a key without it answers 401 here.
+      parameters:
+        - in: path
+          name: receipt_id
+          required: true
+          schema: { $ref: "#/components/schemas/ReceiptId" }
+      responses:
+        "200":
+          description: The brief, the canonical shopping context, the activation plan and the events recorded so far. Fetching does not acknowledge use and never charges again.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentContextResponse" }
+        "400":
+          description: "`invalid_receipt_id`: not an `aindeliv_` id."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: "`delivery_unavailable`: not addressed to this key, expired, or unknown."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /deliveries/ack:
+    post:
+      tags: [Receiving]
+      operationId: acknowledgeDelivery
+      summary: Submit a signed verified or applied acknowledgment.
+      description: |
+        Signed by your server with the receiver secret from `GET /receiver/config`, never by a model: HMAC-SHA256 keyed with
+        the hex-decoded secret (its 32 bytes), in hex. `occurred_at` is any RFC 3339 timestamp with an offset, within five
+        minutes of the exchange's clock.
+        `verified` (application `none`) means the receipt was verified and durably stored; `applied` means your backend
+        actually loaded the context into the agent turn (`agent_context_loaded`) or ranked its catalog (`catalog_ranked`).
+        `applied` requires a prior `verified`. Logical events are deduplicated, so retries are safe: a repeat answers the
+        same `event_id` with `duplicate: true`.
+        The signature covers the payload serialised with no whitespace and the fields in this order: `schema_version`,
+        `reference` (`receipt_id`, `member_id`, `receipt_sha256`, `task_id`, `revision`, `expires_at`), `event`, `application`, `occurred_at`.
+        Needs the `claim` scope; a key without it answers 401 here. 120 calls a minute; this route's 429 carries no `retry_after`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SignedAcknowledgment" }
+            examples:
+              verified: { $ref: "#/components/examples/AckVerified" }
+      responses:
+        "200":
+          description: Recorded (or already recorded).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AcknowledgmentRecorded" }
+              examples:
+                recorded: { $ref: "#/components/examples/AckRecorded" }
+        "400":
+          description: Malformed acknowledgment (`invalid_ack`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: "Not accepted (`ack_not_accepted`): a reference mismatch (including a `member_id` that is not your principal), a bad signature, an expired receipt, or `applied` before `verified`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /deliveries/{receipt_id}/outcome:
+    post:
+      tags: [Receiving]
+      operationId: reportOutcome
+      summary: Report a sale, or no sale, after a delivery you verified.
+      description: |
+        Send it from your order or checkout code. The receipt id arrives on the landing URL (`aix_receipt`), and the AIX tag
+        keeps it in the first-party `aix_receipt` cookie for an hour. `order_value_cents` counts only with `converted: true`;
+        a later report replaces the earlier one. Your dashboard shows these sales against your deliveries; senders see only
+        totals, never a receipt or an order. Link a receipt to an order only to report it. Over MCP the tool is `report_outcome`.
+      parameters:
+        - in: path
+          name: receipt_id
+          required: true
+          schema: { $ref: "#/components/schemas/ReceiptId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [converted]
+              properties:
+                converted: { type: boolean }
+                order_value_cents: { type: integer, minimum: 0, maximum: 100000000 }
+            example: { converted: true, order_value_cents: 12999 }
+      responses:
+        "200":
+          description: Recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  receipt_id: { $ref: "#/components/schemas/ReceiptId" }
+                  converted: { type: boolean }
+                  order_value_cents: { type: [integer, "null"] }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "409":
+          description: "Not recorded (`verified_delivery_required`): the receipt is unknown to this key or not verified yet."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /receiver/config:
+    get:
+      tags: [Receiving]
+      operationId: getReceiverConfig
+      summary: Member id, issuer, derived receiver secret and acknowledgment URL. Server only.
+      description: |
+        Keep `receiver_secret` in your server's secret store. Never return it to a browser, a model, an MCP tool result or a skill file.
+        `member_id` is your principal: the agent id with a production key, `<agent id>:test` with a sandbox key. Needs the
+        `claim` scope; a key without it answers 401 here.
+      responses:
+        "200":
+          description: Receiver configuration.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [member_id, issuer, receiver_secret, signature_scheme, acknowledgment_url]
+                properties:
+                  member_id: { type: string, description: "Your principal: `aixapp_…` in production, `aixapp_…:test` in the sandbox." }
+                  issuer: { type: string, format: uri, description: "The receipt issuer to pin. Not derived from the API hostname." }
+                  receiver_secret: { type: string, pattern: "^[a-f0-9]{64}$" }
+                  signature_scheme: { type: string, const: aix-hmac-sha256-v1 }
+                  acknowledgment_url: { type: string, format: uri }
+              examples:
+                production: { $ref: "#/components/examples/ReceiverConfigExample" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /test-deliveries:
+    post:
+      tags: [Receiving]
+      operationId: sendTestDelivery
+      summary: Send your sandbox receiving agent a free, signed test delivery.
+      description: Sandbox keys only, 10 a minute. Pushes to your sandbox webhook when one is set, otherwise leaves the delivery to pull. The same test delivery is what the console's "Send a test delivery" button sends.
+      responses:
+        "201":
+          description: The test delivery was issued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [receipt_id, environment, member_id, delivery, status, acknowledged, context_url]
+                properties:
+                  receipt_id: { $ref: "#/components/schemas/ReceiptId" }
+                  environment: { type: string, const: test }
+                  member_id:
+                    type: string
+                    description: "Your sandbox identity (`<agent id>:test`)."
+                  delivery:
+                    type: string
+                    enum: [webhook, pull]
+                    description: "webhook when your sandbox webhook URL is set, otherwise pull."
+                  status:
+                    type: string
+                    description: "`claimed` when your webhook answered with a valid signed verified acknowledgment; otherwise the delivery's current state, such as `needs_retry`."
+                  error: { type: [string, "null"] }
+                  acknowledged:
+                    type: boolean
+                    description: "True when status is claimed."
+                  context_url:
+                    type: string
+                    format: uri
+                    description: "Where to fetch the verified context (GET /deliveries/{receipt_id})."
+        "403":
+          description: "`test_key_required` for a production key; `insufficient_scope` (`required: claim`) for a sender key; `receiver_app_required` for a key with that scope that is not a self-serve receiving agent's."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mcp:
+    post:
+      tags: [Sending, Receiving]
+      operationId: mcp
+      summary: The same operations as MCP tools (Streamable HTTP).
+      description: |
+        Connect an MCP host to `https://aix.brambles.ai/api/aix/mcp` with the same bearer header. A key sees only the tools it can call.
+        Sender keys: `submit_intent` (send `{ "intent": { … } }`, the same body as `POST /intents`; `turn` is reserved for
+        assistants Brambles runs, and exactly one of the two must be sent), `report_handoff`, `delete_session`, `get_activity`.
+        Receiver keys: `subscribe_intents`, `get_intent_context`, `pull_intent`, `claim_intent`, `redeem_handoff`,
+        `acknowledge_delivery`, `delivery_status`, `report_outcome`, `get_activity`. There is no test-delivery MCP tool: a
+        sandbox receiver key gets one from `redeem_handoff` with any well-formed handoff id, or from `POST /test-deliveries`.
+        Self-serve keys are used as bearer tokens directly; OAuth client registration is not offered to self-serve agents.
+        120 calls a minute; a 429 carries `retry_after`.
+      responses:
+        "200": { description: "MCP response." }
+        "401":
+          description: |
+            No valid key: `{"error":"invalid_token","error_description":"Bearer token required"}`, with a `WWW-Authenticate`
+            header naming the OAuth protected-resource metadata, as the MCP specification asks. Self-serve keys still need
+            no OAuth flow: send the key as the bearer token.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+              example: 'Bearer realm="aix", resource_metadata="https://aix.brambles.ai/.well-known/oauth-protected-resource"'
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+webhooks:
+  delivery:
+    post:
+      operationId: deliveryWebhook
+      summary: A signed delivery pushed to the receiver's webhook URL.
+      description: |
+        Body is `aix.delivery.v1`, six fields. The `x-ain-signature` header is `t=<unix seconds>,v1=<hex>` where `<hex>` is
+        HMAC-SHA256 over `"aix-webhook-v1\n" + t + "." + raw_body` with the hex-decoded receiver secret; `x-ain-receipt-format`
+        is `vc+sd-jwt`, the receipt's format. Reject bodies older than 60 seconds or larger than 64 KiB. Verify the receipt,
+        store it, then respond with your signed `verified` acknowledgment as the JSON body. A bare HTTP 200 does not count as
+        verification: the delivery stays `needs_retry`. Retries back off for about 40 hours (12 tries, from 5 minutes up to
+        6 hours apart); after the last the delivery is `permanently_failed`, and the receipt stays available from
+        `GET /deliveries` until it expires.
+      parameters:
+        - in: header
+          name: x-ain-signature
+          required: true
+          schema: { type: string, pattern: "^t=\\d{10},v1=[a-f0-9]{64}$" }
+        - in: header
+          name: x-ain-receipt-format
+          required: true
+          schema: { type: string, const: vc+sd-jwt }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeliveryEnvelope" }
+            examples:
+              delivery: { $ref: "#/components/examples/DeliveryEnvelopeExample" }
+      responses:
+        "200":
+          description: Your signed verified acknowledgment.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignedAcknowledgment" }
+components:
+  securitySchemes:
+    bearerKey:
+      type: http
+      scheme: bearer
+      description: A sender or receiver key from the AIX console, sent from your server.
+  responses:
+    InvalidRequest:
+      description: The body failed validation (`invalid_request`, with up to ten `issues`), or a URL was unsafe (`invalid_destination_url`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: "Missing, revoked or unknown key (`unauthorized`)."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    InsufficientScope:
+      description: "The key does not hold the scope this operation needs (`insufficient_scope`, with `required`)."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Too many calls; wait `retry_after` seconds.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  examples:
+    IntentRequest:
+      value:
+        session_id: "sess_7f3k2q"
+        turn: 3
+        task:
+          category: "Carry-on luggage"
+          summary: "Lightweight hard-shell carry-on for two weeks in Japan; under $200; navy preferred."
+          budget: { currency: "USD", max_cents: 20000 }
+          facts:
+            - { attribute: "feature", value: "hard shell", strength: "required" }
+            - { attribute: "feature", value: "lightweight", strength: "required" }
+            - { attribute: "feature", value: "navy", strength: "preferred" }
+        page_url: "https://travelguide.example/best-carry-ons"
+        country: "US"
+        privacy: { gpc: false, consent: "unknown" }
+    IntentAcceptedExample:
+      value:
+        status: "accepted"
+        intent_id: "aixint_0123456789abcdef0123456789abcdef"
+        task_id: "task_c0ffee0123456789"
+        revision: 3
+        expires_at: "2026-10-23T18:04:00.000Z"
+        environment: "live"
+        quality:
+          score: 82
+          signals:
+            - { name: "specific_category", points: 15 }
+            - { name: "descriptive_summary", points: 15 }
+            - { name: "requirements", points: 16 }
+            - { name: "preferences", points: 4 }
+            - { name: "budget", points: 10 }
+            - { name: "refined_over_turns", points: 11 }
+            - { name: "common_task", points: 12 }
+    HandoffRequest:
+      value:
+        session_id: "sess_7f3k2q"
+        destination_url: "https://luggagestore.example/coast-carry-on"
+        consent: "granted"
+        product: { title: "Coast Carry-On", price_cents: 16900, currency: "USD", brand: "Coast", category: "Carry-on luggage", merchant: "luggagestore.example" }
+        surface: "chat"
+    HandoffDeliversOnClick:
+      value:
+        status: "delivers_on_click"
+        handoff_id: "aixho_2f9c0d0123456789abcdef0123456789"
+        handoff_url: "https://aix.brambles.ai/h/aixho_2f9c0d0123456789abcdef0123456789"
+        aix_param: "aix=aixho_2f9c0d0123456789abcdef0123456789"
+        landing_url: "https://luggagestore.example/coast-carry-on?aix=aixho_2f9c0d0123456789abcdef0123456789"
+        delivered: false
+        environment: "live"
+        earnings_cents: 0
+        quality_score: 82
+    HandoffNotDelivered:
+      value:
+        status: "not_delivered"
+        handoff_id: "aixho_2f9c0d0123456789abcdef0123456789"
+        handoff_url: "https://luggagestore.example/coast-carry-on"
+        delivered: false
+        environment: "live"
+        earnings_cents: 0
+        quality_score: 82
+    HandoffSuppressed:
+      value:
+        status: "suppressed"
+        reason: "sensitive_category"
+        sensitive_class: "health"
+        handoff_url: "https://pharmacy.example/products/example"
+        delivered: false
+    RedemptionExample:
+      value:
+        redeemed: true
+        receipt_id: "aindeliv_0123456789abcdef0123456789abcdef"
+        context_url: "https://aix.brambles.ai/api/aix/deliveries/aindeliv_0123456789abcdef0123456789abcdef"
+    ReceiverConfigExample:
+      value:
+        member_id: "aixapp_49356ce196553f361f44"
+        issuer: "https://ain.brambles.ai"
+        receiver_secret: "0f9c4b1e8a7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c1b"
+        signature_scheme: "aix-hmac-sha256-v1"
+        acknowledgment_url: "https://aix.brambles.ai/api/aix/deliveries/ack"
+    DeliveryEnvelopeExample:
+      value:
+        schema_version: "aix.delivery.v1"
+        reference:
+          receipt_id: "aindeliv_0123456789abcdef0123456789abcdef"
+          member_id: "aixapp_49356ce196553f361f44"
+          receipt_sha256: "922a33572acd28986b32c3b2213020d40dc793e5bf83e01d1672db1ea2bce4d1"
+          task_id: "task_c0ffee0123456789"
+          revision: 3
+          expires_at: "2026-10-23T18:04:00.000Z"
+        receipt: "eyJhbGciOiJFUzI1NiIsInR5cCI6InZjK3NkLWp3dCJ9.eyJpc3MiOiJodHRwczovL2Fpbi5icmFtYmxlcy5haSJ9.c2ln~WyJzYWx0IiwiY2xpY2tfY29udGV4dCIse31d~"
+        ain_member_id: "aixapp_49356ce196553f361f44"
+        delivered_at: "2026-10-22T18:04:03.000Z"
+        acknowledgment_url: "https://aix.brambles.ai/api/aix/deliveries/ack"
+    AckVerified:
+      value:
+        payload:
+          schema_version: "aix.delivery-ack.v1"
+          reference:
+            receipt_id: "aindeliv_0123456789abcdef0123456789abcdef"
+            member_id: "aixapp_49356ce196553f361f44"
+            receipt_sha256: "922a33572acd28986b32c3b2213020d40dc793e5bf83e01d1672db1ea2bce4d1"
+            task_id: "task_c0ffee0123456789"
+            revision: 3
+            expires_at: "2026-10-23T18:04:00.000Z"
+          event: "verified"
+          application: "none"
+          occurred_at: "2026-10-22T18:05:12.000Z"
+        # HMAC-SHA256 keyed with ReceiverConfigExample's receiver_secret, hex-decoded, over 'aix-ack-v1\n' + JSON.stringify(payload).
+        signature: "94860517216ce99a6899ce9d214870a7b00efb411a480410c98e26a894755728"
+    AckRecorded:
+      value:
+        ok: true
+        event_id: "ainevt_3b1c9d2e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c"
+        receipt_id: "aindeliv_0123456789abcdef0123456789abcdef"
+        event: "verified"
+        application: "none"
+        duplicate: false
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        required: { type: string, description: "With `insufficient_scope`: the scope the operation needs." }
+        issues:
+          type: array
+          items:
+            type: object
+            properties: { path: { type: string }, message: { type: string } }
+        retry_after: { type: integer, description: "With `rate_limited`: seconds to wait." }
+        error_description: { type: string, description: "With MCP's `invalid_token`." }
+        hint: { type: string }
+    SessionId:
+      type: string
+      pattern: "^[A-Za-z0-9_.:-]{1,128}$"
+      description: Your own opaque session reference. Never a person identifier.
+    ReceiptId:
+      type: string
+      pattern: "^aindeliv_[a-f0-9]{32}$"
+    Fact:
+      type: object
+      additionalProperties: false
+      required: [attribute, value, strength]
+      properties:
+        attribute: { type: string, enum: [brand, width, size, department, use_case, feature, merchant, deal] }
+        value: { type: string, minLength: 1, maxLength: 240 }
+        strength: { type: string, enum: [required, preferred, excluded] }
+    PublisherTask:
+      type: object
+      additionalProperties: false
+      required: [category, summary]
+      properties:
+        action: { type: string, enum: [continue, new_task] }
+        category: { type: string, minLength: 1, maxLength: 240 }
+        summary: { type: string, minLength: 1, maxLength: 1600 }
+        budget:
+          description: Absent keeps the current task's budget; `null` means the shopper removed it.
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties: false
+              required: [currency]
+              properties:
+                currency: { type: string, pattern: "^[A-Z]{3}$" }
+                min_cents: { type: [integer, "null"], minimum: 0, maximum: 100000000 }
+                max_cents: { type: [integer, "null"], minimum: 0, maximum: 100000000 }
+        facts: { type: array, maxItems: 24, items: { $ref: "#/components/schemas/Fact" } }
+    PublisherIntent:
+      type: object
+      additionalProperties: false
+      required: [session_id]
+      description: Send `task` or `message`, at least one.
+      properties:
+        session_id: { $ref: "#/components/schemas/SessionId" }
+        turn: { type: integer, minimum: 1, maximum: 100000 }
+        message: { type: string, minLength: 1, maxLength: 4000 }
+        task: { $ref: "#/components/schemas/PublisherTask" }
+        page_url: { type: string, maxLength: 2048 }
+        locale: { type: string, pattern: "^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8}){0,2}$" }
+        country: { type: string, pattern: "^[A-Z]{2}$" }
+        privacy:
+          type: object
+          additionalProperties: false
+          properties:
+            gpc: { type: boolean }
+            do_not_sell: { type: boolean }
+            minor: { type: boolean }
+            consent: { type: string, enum: [granted, denied, unknown] }
+    QualitySignal:
+      type: object
+      required: [name, points]
+      properties:
+        name:
+          type: string
+          description: "specific_category, descriptive_summary, requirements, preferences, budget, implausible_budget, refined_over_turns, unique_task, common_task, repeated_task or junk_text."
+        points: { type: integer, minimum: 0 }
+    IntentQuality:
+      type: object
+      required: [score, signals]
+      description: How specific and believable the intent is. A campaign pays only for intents at or above its quality bar.
+      properties:
+        score: { type: integer, minimum: 0, maximum: 100 }
+        signals: { type: array, items: { $ref: "#/components/schemas/QualitySignal" } }
+    IntentWarning:
+      type: object
+      required: [code, message]
+      description: Sandbox only; production would have suppressed this intent.
+      properties:
+        code: { type: string, enum: [country_required] }
+        message: { type: string }
+    IntentAccepted:
+      type: object
+      required: [status, intent_id, task_id, revision, expires_at, environment, quality]
+      properties:
+        status: { type: string, const: accepted }
+        intent_id: { type: string, pattern: "^aixint_[a-f0-9]{32}$" }
+        task_id: { type: string }
+        revision: { type: integer, minimum: 1 }
+        expires_at: { type: string, format: date-time }
+        environment: { type: string, enum: [live, test] }
+        quality: { $ref: "#/components/schemas/IntentQuality" }
+        warning: { $ref: "#/components/schemas/IntentWarning" }
+    IntentNotStored:
+      oneOf:
+        - type: object
+          required: [status, reason]
+          properties:
+            status: { const: suppressed }
+            reason: { type: string, enum: [privacy_signal, consent_required, country_required, sensitive_category] }
+            sensitive_class: { type: string, description: "With `sensitive_category`: the class detected." }
+            warning: { $ref: "#/components/schemas/IntentWarning" }
+        - type: object
+          required: [status, revision]
+          properties:
+            status: { const: duplicate_or_stale }
+            revision: { type: integer }
+            warning: { $ref: "#/components/schemas/IntentWarning" }
+        - type: object
+          required: [status]
+          properties:
+            status: { const: no_shopping_intent }
+            warning: { $ref: "#/components/schemas/IntentWarning" }
+    HandoffInput:
+      type: object
+      additionalProperties: false
+      required: [session_id, destination_url]
+      properties:
+        session_id: { $ref: "#/components/schemas/SessionId" }
+        destination_url: { type: string, maxLength: 2048, description: "The store's own page URL; `https`." }
+        consent:
+          type: string
+          enum: [granted, denied]
+          description: "`granted`: a store-link click by a shopper who was shown the notice that clicking shares their request with that store."
+        product:
+          type: object
+          additionalProperties: false
+          properties:
+            title: { type: string, maxLength: 300 }
+            price_cents: { type: integer, minimum: 0, maximum: 100000000 }
+            currency: { type: string, pattern: "^[A-Z]{3}$" }
+            brand: { type: string, maxLength: 300 }
+            category: { type: string, maxLength: 300 }
+            merchant: { type: string, maxLength: 300 }
+        surface: { type: string, enum: [chat, search, recommendation, other] }
+    HandoffResult:
+      type: object
+      required: [status, handoff_url, delivered]
+      properties:
+        status:
+          type: string
+          enum: [delivers_on_click, delivered, test_delivered, not_delivered, delivery_failed, consent_required, suppressed]
+          description: |
+            `delivers_on_click`: a participating store would pay; open `handoff_url`, or add `aix_param` to the store URL
+            inside your own link (`landing_url` is that URL ready-made). `delivered`: this version of the task was already
+            paid for at this store; `duplicate: true`, and `handoff_url` carries the receipt. `test_delivered`: sandbox;
+            `receiver_preview` shows what a store would receive. `not_delivered`: no store will pay for this handoff right
+            now (the store is not receiving, has no matching live campaign, the intent is below its quality bar, or it has
+            no billing or budget; AIX does not say which). `delivery_failed`: the exchange could not deliver. `consent_required`:
+            a shopper in the EEA, the UK or Switzerland without consent, sent to the store unshared. `suppressed`: a sensitive
+            category or a privacy signal (see `reason`); the session is withdrawn. The shopper always gets a `handoff_url` to open.
+        handoff_id: { type: string, pattern: "^aixho_[a-f0-9]{32}$", description: "Absent when `suppressed`." }
+        handoff_url: { type: string, format: uri }
+        delivered: { type: boolean }
+        environment: { type: string, enum: [live, test] }
+        earnings_cents: { type: integer, minimum: 0, description: "What this handoff has earned so far; 0 until delivery." }
+        duplicate: { type: boolean, description: "True when an earlier handoff of the same task to the same store is answered again." }
+        quality_score: { type: [integer, "null"], minimum: 0, maximum: 100, description: "The intent's quality score." }
+        receiver_preview: { type: object, description: "Sandbox only; what a store would receive." }
+        aix_param: { type: string, description: "When a store would pay: `aix=<handoff_id>`, to add to the store URL inside your own link." }
+        landing_url: { type: string, format: uri, description: The store URL with `aix_param` added. }
+        reason: { type: string, enum: [sensitive_category, privacy_signal], description: "With `suppressed`." }
+        sensitive_class: { type: string, description: "With `suppressed` and `reason: sensitive_category`." }
+    HandoffNoIntent:
+      type: object
+      required: [status, handoff_url]
+      properties:
+        status: { type: string, const: no_active_intent }
+        handoff_url: { type: string, format: uri }
+    Redemption:
+      type: object
+      required: [redeemed]
+      properties:
+        redeemed: { type: boolean }
+        receipt_id: { $ref: "#/components/schemas/ReceiptId" }
+        context_url: { type: string, format: uri }
+        duplicate: { type: boolean }
+        test: { type: boolean, description: "True for a sandbox key's free test delivery." }
+        reason: { type: string, description: "With `redeemed: false`: `unknown_handoff`, `not_redeemable`, `expired`, `privacy_signal`, `delivery_failed` or another click check." }
+    SessionDeleted:
+      type: object
+      required: [status, environment, intents_deleted, receipts_cleared]
+      properties:
+        status: { type: string, const: deleted }
+        environment: { type: string, enum: [live, test] }
+        intents_deleted: { type: integer, minimum: 0 }
+        receipts_cleared: { type: integer, minimum: 0 }
+    ActivityPeriod:
+      type: object
+      required: [days, from, to]
+      properties:
+        days: { type: integer, minimum: 1, maximum: 90 }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+    PublisherActivity:
+      type: object
+      required: [principal_id, environment, period, intents, handoffs, earnings]
+      properties:
+        principal_id: { type: string }
+        environment: { type: string, enum: [live, test] }
+        period: { $ref: "#/components/schemas/ActivityPeriod" }
+        intents:
+          type: object
+          required: [accepted, last_accepted_at, average_quality]
+          properties:
+            accepted: { type: integer }
+            last_accepted_at: { type: [string, "null"], format: date-time }
+            average_quality: { type: [integer, "null"], description: "Mean quality score over the period; null when nothing was scored." }
+        handoffs:
+          type: object
+          required: [reported, delivered, awaiting_click, not_delivered, clicks_not_billed]
+          properties:
+            reported: { type: integer }
+            delivered: { type: integer }
+            awaiting_click: { type: integer, description: "Production links a store would pay for, still waiting for the shopper to open them." }
+            not_delivered:
+              type: object
+              description: Handoffs that delivered nothing, by status.
+              required: [not_delivered, consent_required, delivery_failed]
+              properties:
+                not_delivered: { type: integer }
+                consent_required: { type: integer }
+                delivery_failed: { type: integer }
+            clicks_not_billed:
+              type: object
+              description: Opened links that were not billed, by reason (the shopper still reached the store).
+              required: [expired, publisher_server, too_fast, ip_velocity, low_quality, publisher_cap]
+              properties:
+                expired: { type: integer }
+                publisher_server: { type: integer }
+                too_fast: { type: integer }
+                ip_velocity: { type: integer }
+                low_quality: { type: integer }
+                publisher_cap: { type: integer }
+        earnings:
+          type: object
+          required: [currency, accrued_cents, lifetime_accrued_cents, lifetime_collected_cents, lifetime_paid_cents, revenue_share_bps, status]
+          properties:
+            currency: { type: string, const: USD }
+            accrued_cents: { type: integer }
+            lifetime_accrued_cents: { type: integer }
+            lifetime_collected_cents: { type: integer, description: "Accrued earnings whose store payment Stripe has collected: they go into the next payout run." }
+            lifetime_paid_cents: { type: integer, description: "Paid out through the monthly Stripe Connect payout run." }
+            revenue_share_bps: { type: integer, description: "Your share of each paid delivery, in basis points." }
+            status: { type: string, enum: [accruing, revenue_share_not_active, test_mode_never_earns] }
+    ReceiverActivity:
+      type: object
+      required: [principal_id, environment, period, deliveries, spend]
+      properties:
+        principal_id: { type: string }
+        environment: { type: string, enum: [live, test] }
+        period: { $ref: "#/components/schemas/ActivityPeriod" }
+        deliveries:
+          type: object
+          required: [received, verified, applied, last_received_at, first_verified_at]
+          properties:
+            received: { type: integer }
+            verified: { type: integer }
+            applied: { type: integer }
+            last_received_at: { type: [string, "null"], format: date-time }
+            first_verified_at: { type: [string, "null"], format: date-time }
+        spend:
+          type: object
+          description: "Production: charges this period and this month, the month's reserved budget and the Stripe Billing status. Sandbox: `{ currency, test_mode_never_charges: true }`."
+          required: [currency]
+          properties:
+            currency: { type: string, const: USD }
+            period_charged_cents: { type: integer }
+            month_to_date_cents: { type: integer }
+            month_reserved_cents: { type: integer }
+            billing_status: { type: string, description: "The Stripe Billing subscription status; paid delivery runs only while it is active." }
+            test_mode_never_charges: { type: boolean }
+    DeliverySummary:
+      type: object
+      required: [receipt_id, intent_id, destination_domain, price_cents, status, created_at]
+      properties:
+        receipt_id: { $ref: "#/components/schemas/ReceiptId" }
+        intent_id: { type: string }
+        destination_domain: { type: string }
+        price_cents: { type: integer, minimum: 0 }
+        status:
+          type: string
+          description: "`pending`, `claimed`, `needs_retry` (a push is retried with backoff for about 40 hours: 12 tries, from 5 minutes up to 6 hours apart) or `permanently_failed` (after the last try; the receipt stays here until it expires)."
+        created_at: { type: string, format: date-time }
+    DeliveryReference:
+      type: object
+      additionalProperties: false
+      required: [receipt_id, member_id, receipt_sha256, task_id, revision, expires_at]
+      properties:
+        receipt_id: { $ref: "#/components/schemas/ReceiptId" }
+        member_id: { type: string, minLength: 1, maxLength: 160, description: "The receiving principal: the agent id, or `<agent id>:test` in the sandbox." }
+        receipt_sha256: { type: string, pattern: "^[a-f0-9]{64}$", description: "SHA-256 of the complete receipt string, disclosures included." }
+        task_id: { type: string, minLength: 1, maxLength: 240 }
+        revision: { type: integer, minimum: 1 }
+        expires_at: { type: string, format: date-time }
+    DeliveryEnvelope:
+      type: object
+      additionalProperties: false
+      required: [schema_version, reference, receipt, ain_member_id, delivered_at, acknowledgment_url]
+      properties:
+        schema_version: { type: string, const: aix.delivery.v1 }
+        reference: { $ref: "#/components/schemas/DeliveryReference" }
+        receipt: { type: string, description: "SD-JWT VC serialization: <JWS>~<disclosure>~…~" }
+        ain_member_id: { type: string, description: "The receiving principal; must equal your member id and the receipt audience." }
+        delivered_at: { type: string, format: date-time, description: "When the exchange sent this delivery." }
+        acknowledgment_url: { type: string, format: uri, description: "Where to POST your signed acknowledgment." }
+    SignedAcknowledgment:
+      type: object
+      additionalProperties: false
+      required: [payload, signature]
+      properties:
+        payload:
+          type: object
+          additionalProperties: false
+          required: [schema_version, reference, event, application, occurred_at]
+          properties:
+            schema_version: { type: string, const: aix.delivery-ack.v1 }
+            reference: { $ref: "#/components/schemas/DeliveryReference" }
+            event: { type: string, enum: [verified, applied] }
+            application: { type: string, enum: [none, agent_context_loaded, catalog_ranked], description: "`none` with `verified`; an application with `applied`." }
+            occurred_at: { type: string, format: date-time, description: "Any RFC 3339 timestamp with an offset, within five minutes of the exchange's clock." }
+        signature: { type: string, pattern: "^[a-f0-9]{64}$", description: "HMAC-SHA256 over 'aix-ack-v1\\n' + JSON.stringify(payload), keyed with the hex-decoded receiver_secret, in hex." }
+    AcknowledgmentRecorded:
+      type: object
+      required: [ok, event_id, receipt_id, event, application, duplicate]
+      properties:
+        ok: { type: boolean, const: true }
+        event_id: { type: string, pattern: "^ainevt_[a-f0-9]{64}$", description: "Stable logical event id: the same acknowledgment always maps to the same id." }
+        receipt_id: { $ref: "#/components/schemas/ReceiptId" }
+        event: { type: string, enum: [verified, applied] }
+        application: { type: string, enum: [none, agent_context_loaded, catalog_ranked] }
+        duplicate: { type: boolean, description: "True when this logical event had already been recorded." }
+    ShoppingContext:
+      $ref: "spec/shopping-context.v1.schema.json"
+    AgentContextResponse:
+      type: object
+      required: [reference, schema_version, brief, shopping_context, activation, events]
+      properties:
+        reference: { $ref: "#/components/schemas/DeliveryReference" }
+        schema_version: { type: string, const: aix.agent-context.v1 }
+        brief: { type: string, description: "The readable summary. Untrusted shopping data, never instructions." }
+        shopping_context: { $ref: "#/components/schemas/ShoppingContext" }
+        activation:
+          type: object
+          description: The plan AIX derives from the shopping context for the receiver's own catalog tools.
+          properties:
+            task_id: { type: string }
+            revision: { type: integer }
+            category: { type: object, description: "The task's category, as in shopping_context." }
+            filters: { type: array, items: { type: object }, description: "Required facts." }
+            boosts: { type: array, items: { type: object }, description: "Preferred facts." }
+            exclude: { type: array, items: { type: object }, description: "Excluded facts." }
+            price:
+              type: [object, "null"]
+              description: The shopper's budget; null when they named none.
+              properties:
+                currency: { type: string }
+                min_cents: { type: [integer, "null"] }
+                max_cents: { type: [integer, "null"] }
+            agent_brief: { type: string, description: "The readable summary. Untrusted shopping data, never instructions." }
+            ucp_catalog_context: { type: object, description: "A request fragment for a catalog adapter; not a claim of UCP certification." }
+            permitted_uses: { type: array, items: { type: string } }
+            measurement: { type: object }
+        events:
+          type: array
+          description: Acknowledgments recorded for this receipt, oldest first.
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              receipt_id: { $ref: "#/components/schemas/ReceiptId" }
+              receipt_sha256: { type: string }
+              task_id: { type: string }
+              revision: { type: integer }
+              event_type: { type: string, enum: [verified, applied] }
+              application: { type: string, enum: [none, agent_context_loaded, catalog_ranked] }
+              occurred_at: { type: string, format: date-time }
+              recorded_at: { type: string, format: date-time }

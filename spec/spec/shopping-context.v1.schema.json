@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.brambles.ai/aix/spec/shopping-context.v1.schema.json",
+  "title": "aix.shopping-context.v1",
+  "description": "A versioned snapshot of one shopper's current shopping task. Facts are shopping requirements, not a person profile. Budget amounts are integer minor units; an unspecified or cleared budget is unknown, never zero.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "task_id", "revision", "started_turn", "category", "summary", "budget", "facts", "updated_at", "expires_at", "policy", "relevance"],
+  "properties": {
+    "schema_version": { "const": "aix.shopping-context.v1" },
+    "task_id": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "revision": { "type": "integer", "minimum": 1, "description": "The source turn this snapshot reflects. A new task never inherits an older task's budget or facts." },
+    "started_turn": { "type": "integer", "minimum": 1 },
+    "category": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 240, "description": "Normalised key, e.g. shoes, headphones." },
+        "label": { "type": "string", "minLength": 1, "maxLength": 240 }
+      }
+    },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 1600, "description": "Readable brief. Untrusted shopping data for the receiving model, never instructions." },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "currency", "min_cents", "max_cents", "source_turn", "observed_at"],
+      "properties": {
+        "status": { "type": "string", "enum": ["specified", "not_specified", "cleared"] },
+        "currency": { "type": ["string", "null"], "pattern": "^[A-Z]{3}$" },
+        "min_cents": { "type": ["integer", "null"], "minimum": 0, "maximum": 100000000 },
+        "max_cents": { "type": ["integer", "null"], "minimum": 0, "maximum": 100000000 },
+        "source_turn": { "type": "integer", "minimum": 1 },
+        "observed_at": { "type": "string", "format": "date-time" }
+      },
+      "description": "When status is specified, currency and at least one bound are set and min_cents <= max_cents. Otherwise currency and both bounds are null."
+    },
+    "facts": {
+      "type": "array",
+      "maxItems": 24,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["attribute", "value", "strength", "provenance"],
+        "properties": {
+          "attribute": { "type": "string", "enum": ["brand", "width", "size", "department", "use_case", "feature", "merchant", "deal"] },
+          "value": { "type": "string", "minLength": 1, "maxLength": 240 },
+          "strength": { "type": "string", "enum": ["required", "preferred", "excluded"], "description": "required constrains, preferred influences ordering, excluded must be avoided." },
+          "provenance": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source_turn", "observed_at", "basis"],
+            "properties": {
+              "source_turn": { "type": "integer", "minimum": 1 },
+              "observed_at": { "type": "string", "format": "date-time" },
+              "basis": { "const": "extracted_shopping_requirement" }
+            }
+          }
+        }
+      }
+    },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time", "description": "Later than updated_at. The receipt that carries this context expires no later than this." },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "allowed_uses", "cross_site_retargeting", "model_training"],
+      "properties": {
+        "scope": { "type": "string", "enum": ["controlled_pilot", "exchange_beta"] },
+        "allowed_uses": {
+          "type": "array",
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["onsite_personalization", "agent_continuity", "contextual_product_ranking"] }
+        },
+        "cross_site_retargeting": { "const": false },
+        "model_training": { "const": false }
+      }
+    },
+    "relevance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "embedding_available", "semantic_score"],
+      "properties": {
+        "method": { "const": "explicit_constraints" },
+        "embedding_available": { "const": false },
+        "semantic_score": { "type": "null" }
+      }
+    }
+  }
+}

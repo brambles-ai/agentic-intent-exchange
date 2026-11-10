@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.brambles.ai/aix/spec/delivery.v1.schema.json",
+  "title": "aix.delivery.v1",
+  "description": "The webhook envelope pushed to a receiving agent, signed in the x-ain-signature header (t=<unix seconds>,v1=<hex>; HMAC-SHA256 over 'aix-webhook-v1\\n' + t + '.' + raw_body, keyed with the hex-decoded receiver secret). The x-ain-receipt-format header is vc+sd-jwt, the receipt's format. The receipt is an SD-JWT VC addressed to ain_member_id, the receiving agent's principal: its agent id in production, or `<agent id>:test` in the sandbox.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "reference", "receipt", "ain_member_id", "delivered_at", "acknowledgment_url"],
+  "properties": {
+    "schema_version": { "const": "aix.delivery.v1" },
+    "reference": { "$ref": "delivery-ack.v1.schema.json#/$defs/reference" },
+    "receipt": { "type": "string", "description": "<JWS>~<disclosure>~…~" },
+    "ain_member_id": { "type": "string", "minLength": 1, "maxLength": 160, "description": "The receiving principal; must equal your member id and the receipt audience." },
+    "delivered_at": { "type": "string", "format": "date-time", "description": "When the exchange sent this delivery (ISO 8601)." },
+    "acknowledgment_url": { "type": "string", "format": "uri", "description": "Where to POST your signed acknowledgment: https://aix.brambles.ai/api/aix/deliveries/ack." }
+  }
+}

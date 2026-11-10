@@ -1,0 +1,51 @@
+{
+  "schema_version": "aix.shopping-context.v1",
+  "task_id": "task_example_shoes",
+  "revision": 3,
+  "started_turn": 1,
+  "category": { "id": "shoes", "label": "Running shoes" },
+  "summary": "Wide running shoes under $150; cushioning preferred.",
+  "budget": {
+    "status": "specified",
+    "currency": "USD",
+    "min_cents": null,
+    "max_cents": 15000,
+    "source_turn": 1,
+    "observed_at": "2026-10-15T12:00:00.000Z"
+  },
+  "facts": [
+    {
+      "attribute": "width",
+      "value": "wide",
+      "strength": "required",
+      "provenance": {
+        "source_turn": 2,
+        "observed_at": "2026-10-15T12:01:00.000Z",
+        "basis": "extracted_shopping_requirement"
+      }
+    },
+    {
+      "attribute": "feature",
+      "value": "cushioning",
+      "strength": "preferred",
+      "provenance": {
+        "source_turn": 3,
+        "observed_at": "2026-10-15T12:02:00.000Z",
+        "basis": "extracted_shopping_requirement"
+      }
+    }
+  ],
+  "updated_at": "2026-10-15T12:02:00.000Z",
+  "expires_at": "2026-10-16T12:02:00.000Z",
+  "policy": {
+    "scope": "exchange_beta",
+    "allowed_uses": ["onsite_personalization", "agent_continuity", "contextual_product_ranking"],
+    "cross_site_retargeting": false,
+    "model_training": false
+  },
+  "relevance": {
+    "method": "explicit_constraints",
+    "embedding_available": false,
+    "semantic_score": null
+  }
+}

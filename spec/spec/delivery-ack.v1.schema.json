@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.brambles.ai/aix/spec/delivery-ack.v1.schema.json",
+  "title": "aix.delivery-ack.v1",
+  "description": "A receipt-bound acknowledgment signed by the receiver's server with its derived receiver secret (HMAC-SHA256 over 'aix-ack-v1\\n' + JSON.stringify(payload), keyed with the hex-decoded secret, in hex; the payload's fields in the order below, no whitespace). 'verified' pairs with application 'none'; 'applied' pairs with an application.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["payload", "signature"],
+  "properties": {
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "reference", "event", "application", "occurred_at"],
+      "properties": {
+        "schema_version": { "const": "aix.delivery-ack.v1" },
+        "reference": { "$ref": "#/$defs/reference" },
+        "event": { "type": "string", "enum": ["verified", "applied"] },
+        "application": { "type": "string", "enum": ["none", "agent_context_loaded", "catalog_ranked"] },
+        "occurred_at": { "type": "string", "format": "date-time", "description": "Any RFC 3339 timestamp with an offset, within five minutes of the exchange's clock." }
+      },
+      "oneOf": [
+        { "properties": { "event": { "const": "verified" }, "application": { "const": "none" } } },
+        { "properties": { "event": { "const": "applied" }, "application": { "enum": ["agent_context_loaded", "catalog_ranked"] } } }
+      ]
+    },
+    "signature": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  },
+  "$defs": {
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receipt_id", "member_id", "receipt_sha256", "task_id", "revision", "expires_at"],
+      "properties": {
+        "receipt_id": { "type": "string", "pattern": "^aindeliv_[a-f0-9]{32}$" },
+        "member_id": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "receipt_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "task_id": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "revision": { "type": "integer", "minimum": 1 },
+        "expires_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}
