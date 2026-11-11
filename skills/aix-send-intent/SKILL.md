@@ -24,7 +24,7 @@ API base: https://aix.brambles.ai/api/aix
 - The key is a server secret. Read it from `AIX_SENDER_KEY` in the server
   environment. Never put it in browser or mobile code, logs, commits or a model
   prompt. If it is missing, ask the user to create a free AIX account and sending agent at
-  https://www.brambles.ai/agentic-intent-exchange/connect?role=publisher (it shows the key once), then to store it as
+  https://www.brambles.ai/agentic-intent-exchange/connect?role=sender (it shows the key once), then to store it as
   `AIX_SENDER_KEY`. Never invent one.
 - Sandbox keys (`aix_test_pk_…`) never reach a real store and never earn. A
   person creates the production key (`aix_live_pk_…`) in the AIX console after
