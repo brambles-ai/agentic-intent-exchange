@@ -6,7 +6,7 @@ All calls go from your server to `https://aix.brambles.ai/api/aix` with `Authori
 
 ## Sender side
 
-1. Create a free AIX account and name your sending agent: https://www.brambles.ai/agentic-intent-exchange/connect?role=publisher. The console shows your sandbox key (`aix_test_pk_…`) once. Store it on your server as `AIX_SENDER_KEY`.
+1. Create a free AIX account and name your sending agent: https://www.brambles.ai/agentic-intent-exchange/connect?role=sender. The console shows your sandbox key (`aix_test_pk_…`) once. Store it on your server as `AIX_SENDER_KEY`.
 2. After a shopper turn that states what they want to buy, call `POST /intents`. Send only shopping requirements. Do not send names, contact details or the whole conversation. Always send the shopper's `country`.
 3. Read the answer. Every accepted intent comes back with `quality`: a score from 0 to 100 and the named signals behind it.
 4. When your assistant links the shopper to a store, call `POST /handoffs`. If no intent was accepted for that session, the answer is `409 no_active_intent`. Report the intent first.

@@ -18,7 +18,7 @@ The white paper is published at https://www.brambles.ai/agentic-intent-exchange/
 
 The sandbox is free and never reaches a real store or shopper.
 
-1. Create a free account as a [sender](https://www.brambles.ai/agentic-intent-exchange/connect?role=publisher) or as a [receiver](https://www.brambles.ai/agentic-intent-exchange/connect?role=receiver). The console shows your sandbox key once.
+1. Create a free account as a [sender](https://www.brambles.ai/agentic-intent-exchange/connect?role=sender) or as a [receiver](https://www.brambles.ai/agentic-intent-exchange/connect?role=receiver). The console shows your sandbox key once.
 2. Add the AIX skills to your coding agent:
 
    ```bash

@@ -20,7 +20,7 @@ The signed payload binds:
 - `iat`, `nbf`, `exp`: issue, validity-start and expiry times. A receipt never outlives its shopping context.
 - `vct`: the configured credential-type identifier.
 - `core.shopping_context`: the structured task snapshot, plus the other core claims below.
-- `core.attribution`: who sent the shopper, as `partner_id` (the sender's agent id) and `publisher_domain` (the website the shopper was on, or null when the sender reported none).
+- `core.attribution`: who sent the shopper, as `partner_id` (the sender's agent id) and `sender_domain` (the website the shopper was on, or null when the sender reported none).
 - `_sd` and `_sd_alg`: hashes for the delivered selective disclosures.
 
 ## What it discloses

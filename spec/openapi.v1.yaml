@@ -70,7 +70,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/PublisherIntent" }
+            schema: { $ref: "#/components/schemas/SenderIntent" }
             examples:
               structured: { $ref: "#/components/examples/IntentRequest" }
       responses:
@@ -274,7 +274,7 @@ paths:
             application/json:
               schema:
                 oneOf:
-                  - { $ref: "#/components/schemas/PublisherActivity" }
+                  - { $ref: "#/components/schemas/SenderActivity" }
                   - { $ref: "#/components/schemas/ReceiverActivity" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/InsufficientScope" }
@@ -724,7 +724,7 @@ components:
         attribute: { type: string, enum: [brand, width, size, department, use_case, feature, merchant, deal] }
         value: { type: string, minLength: 1, maxLength: 240 }
         strength: { type: string, enum: [required, preferred, excluded] }
-    PublisherTask:
+    SenderTask:
       type: object
       additionalProperties: false
       required: [category, summary]
@@ -744,7 +744,7 @@ components:
                 min_cents: { type: [integer, "null"], minimum: 0, maximum: 100000000 }
                 max_cents: { type: [integer, "null"], minimum: 0, maximum: 100000000 }
         facts: { type: array, maxItems: 24, items: { $ref: "#/components/schemas/Fact" } }
-    PublisherIntent:
+    SenderIntent:
       type: object
       additionalProperties: false
       required: [session_id]
@@ -753,7 +753,7 @@ components:
         session_id: { $ref: "#/components/schemas/SessionId" }
         turn: { type: integer, minimum: 1, maximum: 100000 }
         message: { type: string, minLength: 1, maxLength: 4000 }
-        task: { $ref: "#/components/schemas/PublisherTask" }
+        task: { $ref: "#/components/schemas/SenderTask" }
         page_url: { type: string, maxLength: 2048 }
         locale: { type: string, pattern: "^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8}){0,2}$" }
         country: { type: string, pattern: "^[A-Z]{2}$" }
@@ -900,7 +900,7 @@ components:
         days: { type: integer, minimum: 1, maximum: 90 }
         from: { type: string, format: date-time }
         to: { type: string, format: date-time }
-    PublisherActivity:
+    SenderActivity:
       type: object
       required: [principal_id, environment, period, intents, handoffs, earnings]
       properties:
@@ -932,14 +932,14 @@ components:
             clicks_not_billed:
               type: object
               description: Opened links that were not billed, by reason (the shopper still reached the store).
-              required: [expired, publisher_server, too_fast, ip_velocity, low_quality, publisher_cap]
+              required: [expired, sender_server, too_fast, ip_velocity, low_quality, sender_cap]
               properties:
                 expired: { type: integer }
-                publisher_server: { type: integer }
+                sender_server: { type: integer }
                 too_fast: { type: integer }
                 ip_velocity: { type: integer }
                 low_quality: { type: integer }
-                publisher_cap: { type: integer }
+                sender_cap: { type: integer }
         earnings:
           type: object
           required: [currency, accrued_cents, lifetime_accrued_cents, lifetime_collected_cents, lifetime_paid_cents, revenue_share_bps, status]
