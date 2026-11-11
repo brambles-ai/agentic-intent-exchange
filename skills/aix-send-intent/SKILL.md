@@ -307,7 +307,7 @@ Google ADK (`google-adk`): the session id is `tool_context.session.id`; put `cou
 from google.adk.agents import Agent
 from google.adk.tools import ToolContext
 
-async def share_shopping_task(category: str, summary: str, tool_context: ToolContext,
+async def submit_intent(category: str, summary: str, tool_context: ToolContext,
                               budget_max: float | None = None, currency: str = "USD") -> dict:
     """Share the shopper's current shopping task when they state or change what they want
     to buy. Shopping requirements only: never names, contact details or order numbers."""
@@ -317,7 +317,7 @@ async def share_shopping_task(category: str, summary: str, tool_context: ToolCon
         **({"privacy": tool_context.state["privacy"]} if tool_context.state.get("privacy") else {})})
     return {"status": result.get("status", "unavailable")}
 
-async def store_link(url: str, tool_context: ToolContext, product_title: str | None = None) -> dict:
+async def report_handoff(url: str, tool_context: ToolContext, product_title: str | None = None) -> dict:
     """Call with the store's product URL before showing it to the shopper, and show the returned URL
     instead (wrapped in your affiliate link as usual, if you use one)."""
     result = await aix("handoffs", {"session_id": tool_context.session.id, "destination_url": url,
@@ -326,7 +326,7 @@ async def store_link(url: str, tool_context: ToolContext, product_title: str | N
     return {"url": result.get("landing_url", url), "handoff_id": result.get("handoff_id")}
 
 agent = Agent(name="shopping_assistant", model=MODEL, instruction=INSTRUCTIONS,
-              tools=[share_shopping_task, store_link])
+              tools=[submit_intent, report_handoff])
 ~~~
 
 LangChain (`langchain` 1.x): pass the conversation id, country, consent and privacy signals as the run's context.
@@ -344,7 +344,7 @@ class Shopper:
     privacy: dict | None = None   # e.g. {"gpc": True} when the request carries Sec-GPC: 1
 
 @tool
-async def share_shopping_task(category: str, summary: str, runtime: ToolRuntime[Shopper],
+async def submit_intent(category: str, summary: str, runtime: ToolRuntime[Shopper],
                               budget_max: float | None = None, currency: str = "USD") -> str:
     """Share the shopper's current shopping task when they state or change what they want
     to buy. Shopping requirements only: never names, contact details or order numbers."""
@@ -354,7 +354,7 @@ async def share_shopping_task(category: str, summary: str, runtime: ToolRuntime[
     return result.get("status", "unavailable")
 
 @tool
-async def store_link(url: str, runtime: ToolRuntime[Shopper], product_title: str | None = None) -> str:
+async def report_handoff(url: str, runtime: ToolRuntime[Shopper], product_title: str | None = None) -> str:
     """Call with the store's product URL before showing it to the shopper, and show the returned URL
     instead (wrapped in your affiliate link as usual, if you use one)."""
     result = await aix("handoffs", {"session_id": runtime.context.session_id, "destination_url": url,
@@ -362,7 +362,7 @@ async def store_link(url: str, runtime: ToolRuntime[Shopper], product_title: str
         **({"product": {"title": product_title}} if product_title else {})})
     return result.get("landing_url", url)
 
-agent = create_agent(MODEL, tools=[share_shopping_task, store_link], context_schema=Shopper)
+agent = create_agent(MODEL, tools=[submit_intent, report_handoff], context_schema=Shopper)
 # The tools are async, so run the agent with ainvoke (or astream).
 await agent.ainvoke({"messages": messages}, context=Shopper(session_id=conversation_id, country=country))
 ~~~

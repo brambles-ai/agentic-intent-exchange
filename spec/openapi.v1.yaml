@@ -807,7 +807,7 @@ components:
           required: [status, reason]
           properties:
             status: { const: suppressed }
-            reason: { type: string, enum: [privacy_signal, consent_required, country_required, sensitive_category] }
+            reason: { type: string, enum: [privacy_signal, country_required, sensitive_category] }
             sensitive_class: { type: string, description: "With `sensitive_category`: the class detected." }
             warning: { $ref: "#/components/schemas/IntentWarning" }
         - type: object
@@ -886,7 +886,7 @@ components:
         context_url: { type: string, format: uri }
         duplicate: { type: boolean }
         test: { type: boolean, description: "True for a sandbox key's free test delivery." }
-        reason: { type: string, description: "With `redeemed: false`: `unknown_handoff`, `not_redeemable`, `expired`, `privacy_signal`, `delivery_failed` or another click check." }
+        reason: { type: string, description: "With `redeemed: false`: `unknown_handoff`, `not_redeemable`, `expired`, `privacy_signal`, `automated`, `delivery_failed`, a click check (`sender_server`, `too_fast`, `ip_velocity`, `low_quality`, `sender_cap`), `same_org`, or a reason about your own store's campaign or billing, which the receive-intent skill names." }
     SessionDeleted:
       type: object
       required: [status, environment, intents_deleted, receipts_cleared]

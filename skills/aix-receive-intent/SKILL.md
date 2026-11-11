@@ -236,10 +236,13 @@ Content-Type: application/json
 - `400` `order_required` (no `order_id`) or `visitor_required` (a landing without
   `client_ip` and `user_agent`): nothing is delivered or charged; send the missing
   fields.
-- `{"redeemed": false, "reason": ...}`: nothing is delivered or charged (`expired` after
-  an hour, `not_redeemable`, `receiver_budget_reached`, `receiver_billing_inactive` (no card
-  that can be charged: fix it in the AIX console), `low_quality`, ...; these are your own
-  store's reasons, which only your receiver key ever sees).
+- `{"redeemed": false, "reason": ...}`: nothing is delivered or charged. `reason` is
+  `not_redeemable`, `expired` (after an hour), `privacy_signal`, `automated`,
+  `delivery_failed`, a click check (`sender_server`, `too_fast`, `ip_velocity`,
+  `low_quality`, `sender_cap`) or your own store's state (`no_receiver`,
+  `receiver_not_accepting`, `receiver_no_matching_campaign`, `receiver_budget_reached`,
+  `receiver_billing_inactive` (no card that can be charged: fix it in the AIX console),
+  `same_org`). Only your receiver key ever sees your store's state.
 - An unknown id or another store's handoff answers 404. With the sandbox key any
   `aixho_` id returns a free test delivery, so you can test this path. It carries a
   sample brief, unless the id is a handoff a sandbox sending agent really reported to
