@@ -148,7 +148,9 @@ paths:
         charges your live campaign as a click would, once. A repeat landing answers the receipt only to the same visitor; a
         retried checkout or conversation claim within 15 minutes answers the same receipt, free, with `duplicate: true`.
         A claim without its visitor or order answers `400` (`visitor_required`, `order_required`) and changes nothing. Only the store the handoff was reported for can redeem it, within one hour of the report. A
-        sandbox key gets a free test delivery for any well-formed id, with `test: true`. When the landing request carried
+        sandbox key gets a free test delivery for any well-formed id, with `test: true`. It carries a sample brief, unless
+        the id is a handoff a sandbox sender reported to you (the same organization owns both agents, or the handoff is to
+        your verified domain): then it carries that sender's brief, so both sides can be tested together. When the landing request carried
         `Sec-GPC: 1`, send `gpc: true` or forward that header: nothing is delivered or charged (`privacy_signal`).
       parameters:
         - { name: handoff_id, in: path, required: true, schema: { type: string, pattern: "^aixho_[a-f0-9]{32}$" } }
@@ -589,7 +591,7 @@ components:
             - { attribute: "feature", value: "hard shell", strength: "required" }
             - { attribute: "feature", value: "lightweight", strength: "required" }
             - { attribute: "feature", value: "navy", strength: "preferred" }
-        page_url: "https://travelguide.example/best-carry-ons"
+        page_url: "https://travelguide.example.com/best-carry-ons"
         country: "US"
         privacy: { gpc: false, consent: "unknown" }
     IntentAcceptedExample:
@@ -613,7 +615,7 @@ components:
     HandoffRequest:
       value:
         session_id: "sess_7f3k2q"
-        destination_url: "https://luggagestore.example/coast-carry-on"
+        destination_url: "https://luggagestore.example.com/coast-carry-on"
         consent: "granted"
         product: { title: "Coast Carry-On", price_cents: 16900, currency: "USD", brand: "Coast", category: "Carry-on luggage", merchant: "luggagestore.example" }
         surface: "chat"
@@ -623,7 +625,7 @@ components:
         handoff_id: "aixho_2f9c0d0123456789abcdef0123456789"
         handoff_url: "https://aix.brambles.ai/h/aixho_2f9c0d0123456789abcdef0123456789"
         aix_param: "aix=aixho_2f9c0d0123456789abcdef0123456789"
-        landing_url: "https://luggagestore.example/coast-carry-on?aix=aixho_2f9c0d0123456789abcdef0123456789"
+        landing_url: "https://luggagestore.example.com/coast-carry-on?aix=aixho_2f9c0d0123456789abcdef0123456789"
         delivered: false
         environment: "live"
         earnings_cents: 0
@@ -632,7 +634,7 @@ components:
       value:
         status: "not_delivered"
         handoff_id: "aixho_2f9c0d0123456789abcdef0123456789"
-        handoff_url: "https://luggagestore.example/coast-carry-on"
+        handoff_url: "https://luggagestore.example.com/coast-carry-on"
         delivered: false
         environment: "live"
         earnings_cents: 0
@@ -642,7 +644,7 @@ components:
         status: "suppressed"
         reason: "sensitive_category"
         sensitive_class: "health"
-        handoff_url: "https://pharmacy.example/products/example"
+        handoff_url: "https://pharmacy.example.com/products/example"
         delivered: false
     RedemptionExample:
       value:

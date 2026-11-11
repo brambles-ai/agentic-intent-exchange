@@ -30,6 +30,16 @@ In the sandbox, an AIX link shows a test page naming the destination instead of 
 6. Record a signed `verified` acknowledgment, as the webhook response body or with `POST /deliveries/ack`. The console then shows Connected. A bare HTTP 200 leaves the delivery waiting for a retry.
 7. Load the brief into your agent's turn. Only after that succeeds, record `applied` with `agent_context_loaded`.
 
+## Both sides together
+
+A test delivery normally carries a sample brief. To see a brief travel from your sending agent to your receiving agent, redeem a handoff id your sandbox sender key reported:
+
+1. With the sender key, call `POST /intents`, then `POST /handoffs`. Keep the `handoff_id` from the answer.
+2. With the receiver key, call `POST /handoffs/{handoff_id}/redeem` with `{"via": "landing"}` and a `client_ip` and `user_agent`.
+3. Read the delivery with `GET /deliveries/{receipt_id}`. It carries the brief the sender sent.
+
+This works when the same organization owns both agents, or when the handoff is to a domain the receiving agent has verified. Any other id answers the sample. A repeat answers the same receipt with `duplicate: true`.
+
 ## Going to production
 
 - Sender: create the production key (`aix_live_pk_…`) in the console after one successful sandbox handoff.

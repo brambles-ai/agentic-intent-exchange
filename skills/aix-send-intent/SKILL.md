@@ -98,7 +98,7 @@ Content-Type: application/json
       { "attribute": "feature", "value": "cushioning", "strength": "preferred" }
     ]
   },
-  "page_url": "https://reviews.example/best-running-shoes",
+  "page_url": "https://reviews.example.com/best-running-shoes",
   "locale": "en-US",
   "country": "US",
   "privacy": { "gpc": false }
@@ -139,7 +139,7 @@ Content-Type: application/json
 
 {
   "session_id": "conv_123",
-  "destination_url": "https://store.example/products/wide-runner",
+  "destination_url": "https://store.example.com/products/wide-runner",
   "consent": "granted",
   "product": { "title": "Wide Runner 2", "price_cents": 12999, "currency": "USD", "brand": "Example", "merchant": "Example Store" }
 }
@@ -219,8 +219,9 @@ Map a shopper to all of their session ids yourself: AIX only knows sessions.
 
 ## 5. Verify in the sandbox
 
-1. Send one intent and one handoff with the sandbox key (any public store URL
-   works). The handoff answers `"status":"test_delivered"` with a
+1. Send one intent and one handoff with the sandbox key (any public https store
+   URL works; `invalid_destination_url` means the address is not one, and a 400
+   `invalid_request` lists each wrong field in `issues`). The handoff answers `"status":"test_delivered"` with a
    `receiver_preview` (what a store would receive) and the same `landing_url` and
    `aix_param` a production handoff returns, so you can check your link keeps them.
 2. `GET https://aix.brambles.ai/api/aix/activity` with the same key shows the accepted intent and the

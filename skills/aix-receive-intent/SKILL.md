@@ -241,7 +241,10 @@ Content-Type: application/json
   that can be charged: fix it in the AIX console), `low_quality`, ...; these are your own
   store's reasons, which only your receiver key ever sees).
 - An unknown id or another store's handoff answers 404. With the sandbox key any
-  `aixho_` id returns a free test delivery, so you can test this path.
+  `aixho_` id returns a free test delivery, so you can test this path. It carries a
+  sample brief, unless the id is a handoff a sandbox sending agent really reported to
+  you (the same organization owns both, or the handoff is to your verified domain):
+  then it carries that agent's brief, so the two sides can be tested together.
 
 Redeem with a short timeout and never let it hold up or fail the checkout. A store agent
 connected to `https://aix.brambles.ai/api/aix/mcp` with the receiver key can call the `redeem_handoff` tool
