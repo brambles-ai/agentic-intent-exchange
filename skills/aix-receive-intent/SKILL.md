@@ -49,15 +49,15 @@ sandbox deliveries never verify with production settings.
 
 **Webhook (push).** Add an HTTPS POST endpoint and save its URL in the AIX console
 (sandbox and production endpoints are separate). Each request carries the header
-`x-ain-signature: t=<unix seconds>,v1=<hex>` and this JSON envelope:
+`x-aix-signature: t=<unix seconds>,v1=<hex>` and this JSON envelope:
 
 ~~~json
 {
   "schema_version": "aix.delivery.v1",
-  "reference": { "receipt_id": "aindeliv_…", "member_id": "<your member_id>", "receipt_sha256": "<hex>",
+  "reference": { "receipt_id": "aixdeliv_…", "member_id": "<your member_id>", "receipt_sha256": "<hex>",
                  "task_id": "task_…", "revision": 3, "expires_at": "2026-11-01T20:30:00.000Z" },
   "receipt": "<the signed receipt, an SD-JWT VC>",
-  "ain_member_id": "<your member_id>",
+  "aix_member_id": "<your member_id>",
   "delivered_at": "2026-11-01T19:30:00.000Z",
   "acknowledgment_url": "https://aix.brambles.ai/api/aix/deliveries/ack"
 }
@@ -100,7 +100,7 @@ export function acknowledgment(reference: unknown, secretHex: string,
 }
 ~~~
 
-Check that `envelope.ain_member_id` equals your configured `member_id` and that
+Check that `envelope.aix_member_id` equals your configured `member_id` and that
 `verifyAixReceipt(envelope.receipt, config)` succeeds with `jti` equal to
 `envelope.reference.receipt_id`. Store the receipt keyed by that id (retries repeat
 it), and only then answer HTTP 200 with `acknowledgment(envelope.reference, secret)`

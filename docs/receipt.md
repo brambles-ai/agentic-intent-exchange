@@ -10,13 +10,13 @@ The wire format is SD-JWT VC-style serialization:
 <JWS>~<disclosure1>~...~<disclosureN>~
 ```
 
-The issuer signs the JWS with ES256 using its configured KMS key. The protected header identifies `alg: ES256`, `typ: vc+sd-jwt`, and a trusted `kid`. A webhook delivery names the same format in its `x-ain-receipt-format` header: `vc+sd-jwt`.
+The issuer signs the JWS with ES256 using its configured KMS key. The protected header identifies `alg: ES256`, `typ: vc+sd-jwt`, and a trusted `kid`. A webhook delivery names the same format in its `x-aix-receipt-format` header: `vc+sd-jwt`.
 
 The signed payload binds:
 
 - `iss`: the configured signing issuer.
 - `aud`: the intended principal. This is the receiver's agent id, or `<agent id>:test` for a sandbox delivery.
-- `jti`: the exact `aindeliv_` receipt identifier.
+- `jti`: the exact `aixdeliv_` receipt identifier.
 - `iat`, `nbf`, `exp`: issue, validity-start and expiry times. A receipt never outlives its shopping context.
 - `vct`: the configured credential-type identifier.
 - `core.shopping_context`: the structured task snapshot, plus the other core claims below.
@@ -61,7 +61,7 @@ A receipt ID alone is not a credential. Every authenticated read and acknowledgm
 
 - Public keys: `https://aix.brambles.ai/.well-known/jwks.json`
 - Trusted issuer: the `issuer` value from `GET /receiver/config`. Configure the trusted issuer and key separately. Never fetch an arbitrary key URL named in an incoming receipt.
-- Credential type (v1): `https://ain.brambles.ai/credentials/intent-receipt-v1`
+- Credential type (v1): `https://aix.brambles.ai/credentials/intent-receipt-v1`
 
 The API base is `https://aix.brambles.ai`. The issuer keeps its original identifier. An API hostname change is not a signing-identity migration. Key rotation is announced in the changelog.
 

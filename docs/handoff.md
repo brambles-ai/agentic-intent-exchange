@@ -52,7 +52,7 @@ A store lists `brambles.ai/aix` in the `extensions` of its `/.well-known/poppy.j
 
 ### Webhook
 
-AIX pushes each delivery to the receiver's HTTPS webhook as an `aix.delivery.v1` envelope, signed in the `x-ain-signature` header. The receiver answers with its signed `verified` acknowledgment as the response body. Without one, the push is retried for about 40 hours: 12 tries, from 5 minutes up to 6 hours apart.
+AIX pushes each delivery to the receiver's HTTPS webhook as an `aix.delivery.v1` envelope, signed in the `x-aix-signature` header. The receiver answers with its signed `verified` acknowledgment as the response body. Without one, the push is retried for about 40 hours: 12 tries, from 5 minutes up to 6 hours apart.
 
 ### Polling
 

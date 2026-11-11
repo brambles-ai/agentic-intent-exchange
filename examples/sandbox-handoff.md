@@ -26,7 +26,7 @@ In the sandbox, an AIX link shows a test page naming the destination instead of 
 
    The delivery is addressed to your sandbox identity, `<agent id>:test`.
 4. Get the delivery. Either receive the `aix.delivery.v1` envelope on your HTTPS webhook, or pull it with `GET /deliveries` and `GET /deliveries/{receipt_id}`.
-5. Verify it. For a webhook, read the unmodified body and the `x-ain-signature` header, check the HMAC with your `receiver_secret`, and reject bodies older than a minute. Then verify the receipt against the pinned `issuer` and `https://aix.brambles.ai/.well-known/jwks.json`. Store it keyed by `receipt_id`.
+5. Verify it. For a webhook, read the unmodified body and the `x-aix-signature` header, check the HMAC with your `receiver_secret`, and reject bodies older than a minute. Then verify the receipt against the pinned `issuer` and `https://aix.brambles.ai/.well-known/jwks.json`. Store it keyed by `receipt_id`.
 6. Record a signed `verified` acknowledgment, as the webhook response body or with `POST /deliveries/ack`. The console then shows Connected. A bare HTTP 200 leaves the delivery waiting for a retry.
 7. Load the brief into your agent's turn. Only after that succeeds, record `applied` with `agent_context_loaded`.
 

@@ -319,7 +319,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AgentContextResponse" }
         "400":
-          description: "`invalid_receipt_id`: not an `aindeliv_` id."
+          description: "`invalid_receipt_id`: not an `aixdeliv_` id."
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -521,8 +521,8 @@ webhooks:
       operationId: deliveryWebhook
       summary: A signed delivery pushed to the receiver's webhook URL.
       description: |
-        Body is `aix.delivery.v1`, six fields. The `x-ain-signature` header is `t=<unix seconds>,v1=<hex>` where `<hex>` is
-        HMAC-SHA256 over `"aix-webhook-v1\n" + t + "." + raw_body` with the hex-decoded receiver secret; `x-ain-receipt-format`
+        Body is `aix.delivery.v1`, six fields. The `x-aix-signature` header is `t=<unix seconds>,v1=<hex>` where `<hex>` is
+        HMAC-SHA256 over `"aix-webhook-v1\n" + t + "." + raw_body` with the hex-decoded receiver secret; `x-aix-receipt-format`
         is `vc+sd-jwt`, the receipt's format. Reject bodies older than 60 seconds or larger than 64 KiB. Verify the receipt,
         store it, then respond with your signed `verified` acknowledgment as the JSON body. A bare HTTP 200 does not count as
         verification: the delivery stays `needs_retry`. Retries back off for about 40 hours (12 tries, from 5 minutes up to
@@ -530,11 +530,11 @@ webhooks:
         `GET /deliveries` until it expires.
       parameters:
         - in: header
-          name: x-ain-signature
+          name: x-aix-signature
           required: true
           schema: { type: string, pattern: "^t=\\d{10},v1=[a-f0-9]{64}$" }
         - in: header
-          name: x-ain-receipt-format
+          name: x-aix-receipt-format
           required: true
           schema: { type: string, const: vc+sd-jwt }
       requestBody:
@@ -647,12 +647,12 @@ components:
     RedemptionExample:
       value:
         redeemed: true
-        receipt_id: "aindeliv_0123456789abcdef0123456789abcdef"
-        context_url: "https://aix.brambles.ai/api/aix/deliveries/aindeliv_0123456789abcdef0123456789abcdef"
+        receipt_id: "aixdeliv_0123456789abcdef0123456789abcdef"
+        context_url: "https://aix.brambles.ai/api/aix/deliveries/aixdeliv_0123456789abcdef0123456789abcdef"
     ReceiverConfigExample:
       value:
         member_id: "aixapp_49356ce196553f361f44"
-        issuer: "https://ain.brambles.ai"
+        issuer: "https://aix.brambles.ai"
         receiver_secret: "0f9c4b1e8a7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c1b"
         signature_scheme: "aix-hmac-sha256-v1"
         acknowledgment_url: "https://aix.brambles.ai/api/aix/deliveries/ack"
@@ -660,14 +660,14 @@ components:
       value:
         schema_version: "aix.delivery.v1"
         reference:
-          receipt_id: "aindeliv_0123456789abcdef0123456789abcdef"
+          receipt_id: "aixdeliv_0123456789abcdef0123456789abcdef"
           member_id: "aixapp_49356ce196553f361f44"
           receipt_sha256: "922a33572acd28986b32c3b2213020d40dc793e5bf83e01d1672db1ea2bce4d1"
           task_id: "task_c0ffee0123456789"
           revision: 3
           expires_at: "2026-10-23T18:04:00.000Z"
         receipt: "eyJhbGciOiJFUzI1NiIsInR5cCI6InZjK3NkLWp3dCJ9.eyJpc3MiOiJodHRwczovL2Fpbi5icmFtYmxlcy5haSJ9.c2ln~WyJzYWx0IiwiY2xpY2tfY29udGV4dCIse31d~"
-        ain_member_id: "aixapp_49356ce196553f361f44"
+        aix_member_id: "aixapp_49356ce196553f361f44"
         delivered_at: "2026-10-22T18:04:03.000Z"
         acknowledgment_url: "https://aix.brambles.ai/api/aix/deliveries/ack"
     AckVerified:
@@ -675,7 +675,7 @@ components:
         payload:
           schema_version: "aix.delivery-ack.v1"
           reference:
-            receipt_id: "aindeliv_0123456789abcdef0123456789abcdef"
+            receipt_id: "aixdeliv_0123456789abcdef0123456789abcdef"
             member_id: "aixapp_49356ce196553f361f44"
             receipt_sha256: "922a33572acd28986b32c3b2213020d40dc793e5bf83e01d1672db1ea2bce4d1"
             task_id: "task_c0ffee0123456789"
@@ -685,12 +685,12 @@ components:
           application: "none"
           occurred_at: "2026-10-22T18:05:12.000Z"
         # HMAC-SHA256 keyed with ReceiverConfigExample's receiver_secret, hex-decoded, over 'aix-ack-v1\n' + JSON.stringify(payload).
-        signature: "94860517216ce99a6899ce9d214870a7b00efb411a480410c98e26a894755728"
+        signature: "a40987995bea780135e5dc8c87fba41292f72da2afe78a71af3e71b998f5a723"
     AckRecorded:
       value:
         ok: true
-        event_id: "ainevt_3b1c9d2e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c"
-        receipt_id: "aindeliv_0123456789abcdef0123456789abcdef"
+        event_id: "aixevt_3b1c9d2e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c"
+        receipt_id: "aixdeliv_0123456789abcdef0123456789abcdef"
         event: "verified"
         application: "none"
         duplicate: false
@@ -715,7 +715,7 @@ components:
       description: Your own opaque session reference. Never a person identifier.
     ReceiptId:
       type: string
-      pattern: "^aindeliv_[a-f0-9]{32}$"
+      pattern: "^aixdeliv_[a-f0-9]{32}$"
     Fact:
       type: object
       additionalProperties: false
@@ -1004,12 +1004,12 @@ components:
     DeliveryEnvelope:
       type: object
       additionalProperties: false
-      required: [schema_version, reference, receipt, ain_member_id, delivered_at, acknowledgment_url]
+      required: [schema_version, reference, receipt, aix_member_id, delivered_at, acknowledgment_url]
       properties:
         schema_version: { type: string, const: aix.delivery.v1 }
         reference: { $ref: "#/components/schemas/DeliveryReference" }
         receipt: { type: string, description: "SD-JWT VC serialization: <JWS>~<disclosure>~…~" }
-        ain_member_id: { type: string, description: "The receiving principal; must equal your member id and the receipt audience." }
+        aix_member_id: { type: string, description: "The receiving principal; must equal your member id and the receipt audience." }
         delivered_at: { type: string, format: date-time, description: "When the exchange sent this delivery." }
         acknowledgment_url: { type: string, format: uri, description: "Where to POST your signed acknowledgment." }
     SignedAcknowledgment:
@@ -1033,7 +1033,7 @@ components:
       required: [ok, event_id, receipt_id, event, application, duplicate]
       properties:
         ok: { type: boolean, const: true }
-        event_id: { type: string, pattern: "^ainevt_[a-f0-9]{64}$", description: "Stable logical event id: the same acknowledgment always maps to the same id." }
+        event_id: { type: string, pattern: "^aixevt_[a-f0-9]{64}$", description: "Stable logical event id: the same acknowledgment always maps to the same id." }
         receipt_id: { $ref: "#/components/schemas/ReceiptId" }
         event: { type: string, enum: [verified, applied] }
         application: { type: string, enum: [none, agent_context_loaded, catalog_ranked] }
