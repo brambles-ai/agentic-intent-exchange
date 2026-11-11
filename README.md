@@ -28,6 +28,17 @@ The sandbox is free and never reaches a real store or shopper.
 3. Ask the agent to connect your assistant or store to AIX. The installed skills hold no key.
 4. Follow [`examples/sandbox-handoff.md`](examples/sandbox-handoff.md).
 
+## Client libraries
+
+Two client libraries call the same HTTP API from your server, for sending and receiving agents. Each needs a key from the AIX console. Their source is at https://github.com/brambles-ai/aix-sdks.
+
+| Language | Install |
+|---|---|
+| TypeScript and JavaScript, Node 18 or later | `npm install @brambles-ai/aix` |
+| Python 3.10 or later | `pip install brambles-aix` |
+
+## Docs
+
 The public docs are at https://www.brambles.ai/agentic-intent-exchange/docs:
 
 - [Overview](https://www.brambles.ai/agentic-intent-exchange/docs/overview)
